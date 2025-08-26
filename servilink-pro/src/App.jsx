@@ -1,3 +1,4 @@
+// src/App.jsx - Con basename para /servi-link
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -8,6 +9,8 @@ import ClientAuth from './pages/auth/ClientAuth';
 import ClientRegister from './pages/auth/ClientRegister';
 import ContractorAuth from './pages/auth/ContractorAuth';
 import ContractorRegister from './pages/auth/ContractorRegister';
+
+// Client Pages
 import ClientDashboard from './pages/client/ClientDashboard';
 import ServiceSelection from './pages/client/ServiceSelection';
 import ServiceDetails from './pages/client/ServiceDetails';
@@ -16,9 +19,15 @@ import ProfessionalFound from './pages/client/ProfessionalFound';
 import ScheduleTime from './pages/client/ScheduleTime';
 import ConfirmService from './pages/client/ConfirmService';
 import RateService from './pages/client/RateService';
+import PaymentScreen from './pages/client/PaymentScreen';
+
+// Contractor Pages
 import ContractorDashboard from './pages/contractor/ContractorDashboard';
 import ContractorCalendar from './pages/contractor/ContractorCalendar';
 import ContractorAvailability from './pages/contractor/ContractorAvailability';
+
+// Shared Pages
+import NotificationsScreen from './pages/shared/NotificationsScreen';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, userType }) => {
@@ -190,6 +199,15 @@ function AppRoutes() {
         } 
       />
 
+      <Route 
+        path="/client/payment" 
+        element={
+          <ProtectedRoute userType="cliente">
+            <PaymentScreen />
+          </ProtectedRoute>
+        } 
+      />
+
       {/* Rutas protegidas para contratistas */}
       <Route 
         path="/contractor/dashboard" 
@@ -218,6 +236,16 @@ function AppRoutes() {
         } 
       />
 
+      {/* Rutas compartidas */}
+      <Route 
+        path="/notifications" 
+        element={
+          <ProtectedRoute>
+            <NotificationsScreen />
+          </ProtectedRoute>
+        } 
+      />
+
       {/* Ruta por defecto - redirigir a home */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -227,7 +255,7 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router basename="/servi-link">
         <div className="App">
           <AppRoutes />
         </div>

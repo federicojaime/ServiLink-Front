@@ -1,7 +1,8 @@
+// src/pages/client/ConfirmService.jsx - Actualizado para integración con pago
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
-import { appointmentService, paymentService } from '../../services/api';
+import { ArrowLeft, Shield, Calendar, MapPin, User } from 'lucide-react';
+import { appointmentService } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
 const ConfirmService = () => {
@@ -11,6 +12,7 @@ const ConfirmService = () => {
   const { requestId, serviceData, professional, selectedDate, selectedTime } = location.state || {};
   
   const [loading, setLoading] = useState(false);
+  const [estimatedPrice] = useState(8000); // Precio estimado
 
   const formatDate = (date) => {
     const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -23,45 +25,41 @@ const ConfirmService = () => {
     return `${dayName}, ${date} de ${monthName} a las ${selectedTime} hs`;
   };
 
-  const handleConfirmarYPagar = async () => {
+  const handleConfirmarServicio = async () => {
     setLoading(true);
     
     try {
-      // Crear la cita
+      // Crear la cita primero
       const appointmentData = {
         solicitud_id: requestId,
-        contratista_id: professional?.id || 1,
+        contratista_id: professional?.id || 4,
         cliente_id: user?.id || 1,
         fecha_servicio: `2025-08-${selectedDate.toString().padStart(2, '0')}`,
         hora_inicio: `${selectedTime}:00`,
         hora_fin: `${parseInt(selectedTime) + 2}:00:00`,
-        precio_acordado: 0, // A cotizar
+        precio_acordado: estimatedPrice,
         notas_cliente: serviceData?.description || 'Servicio solicitado'
       };
 
       const appointmentResponse = await appointmentService.createAppointment(appointmentData);
       
       if (appointmentResponse.success) {
-        // Crear pago protegido (solo si hay precio acordado)
-        if (appointmentData.precio_acordado > 0) {
-          const paymentData = {
-            cita_id: appointmentResponse.data.cita_id,
-            monto_consulta: appointmentData.precio_acordado,
-            notification_url: 'https://miapp.com/webhook/mercadopago',
-            success_url: 'https://miapp.com/pago-exitoso',
-            failure_url: 'https://miapp.com/pago-fallido'
-          };
-
-          const paymentResponse = await paymentService.createConsultationPayment(paymentData);
-          
-          if (paymentResponse.success && paymentResponse.data.init_point) {
-            // Redirigir a MercadoPago
-            window.open(paymentResponse.data.init_point, '_blank');
-          }
-        }
+        const appointmentId = appointmentResponse.data.cita_id;
         
-        alert('¡Cita confirmada exitosamente! El profesional se pondrá en contacto contigo.');
-        navigate('/client/dashboard');
+        // Redirigir a la pantalla de pago
+        navigate('/client/payment', {
+          state: {
+            appointmentId: appointmentId,
+            amount: estimatedPrice,
+            serviceData: {
+              category: serviceData?.category,
+              description: serviceData?.description,
+              professional: professional?.nombre,
+              date: formatDate(selectedDate),
+              address: 'Av. Corrientes 1234, CABA'
+            }
+          }
+        });
       } else {
         throw new Error(appointmentResponse.message || 'Error al confirmar la cita');
       }
@@ -103,65 +101,112 @@ const ConfirmService = () => {
         {/* Detalles del servicio */}
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-8 border border-gray-100">
           {/* Profesional */}
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
-              PROFESIONAL
-            </h3>
-            <p className="text-lg font-semibold text-gray-800">
-              {professional?.nombre || 'Roberto Funes'}
-            </p>
+          <div className="flex items-center space-x-4 mb-6">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center">
+              <User className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">
+                {professional?.nombre || 'Roberto Funes'}
+              </h3>
+              <p className="text-blue-600 text-sm">
+                {professional?.especialidad || serviceData?.category || 'Profesional'}
+              </p>
+              <div className="flex items-center mt-1">
+                <span className="text-yellow-400">★</span>
+                <span className="text-sm text-gray-600 ml-1">
+                  {professional?.rating || '4.8'} ({professional?.reviews || '124'} reseñas)
+                </span>
+              </div>
+            </div>
           </div>
 
-          {/* Problema */}
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
-              PROBLEMA
-            </h3>
-            <p className="text-lg font-semibold text-gray-800">
-              {serviceData?.description || 'asdasdasd'}
-            </p>
-          </div>
+          {/* Detalles del servicio */}
+          <div className="space-y-4">
+            {/* Problema */}
+            <div className="flex items-start space-x-3">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
+              <div>
+                <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  PROBLEMA
+                </h4>
+                <p className="text-gray-800 font-medium">
+                  {serviceData?.description || 'Servicio solicitado'}
+                </p>
+              </div>
+            </div>
 
-          {/* Fecha y hora */}
-          <div className="mb-6">
-            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
-              FECHA Y HORA
-            </h3>
-            <p className="text-lg font-semibold text-gray-800">
-              {formatDate(selectedDate)}
-            </p>
+            {/* Fecha y hora */}
+            <div className="flex items-start space-x-3">
+              <Calendar className="w-4 h-4 text-blue-600 mt-1" />
+              <div>
+                <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  FECHA Y HORA
+                </h4>
+                <p className="text-gray-800 font-medium">
+                  {formatDate(selectedDate)}
+                </p>
+              </div>
+            </div>
+
+            {/* Dirección */}
+            <div className="flex items-start space-x-3">
+              <MapPin className="w-4 h-4 text-blue-600 mt-1" />
+              <div>
+                <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  DIRECCIÓN
+                </h4>
+                <p className="text-gray-800 font-medium">
+                  Av. Corrientes 1234, CABA
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Total a pagar */}
-          <div className="border-t pt-4">
+          <div className="border-t pt-6 mt-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold text-gray-800">
-                TOTAL A PAGAR
+                PRECIO ESTIMADO
               </h3>
-              <p className="text-xl font-bold text-blue-600">
-                $A cotizar
+              <p className="text-2xl font-bold text-blue-600">
+                ${estimatedPrice.toLocaleString()}
               </p>
             </div>
 
             {/* Información del pago protegido */}
             <div className="bg-blue-50 rounded-lg p-4">
-              <p className="text-sm text-gray-700 leading-relaxed">
-                <span className="font-medium">Pago Protegido:</span> Tu pago será retenido de forma segura y 
-                solo se le liberará al profesional una vez que confirmes que el 
-                trabajo fue completado.
-              </p>
+              <div className="flex items-start space-x-3">
+                <Shield className="w-5 h-5 text-blue-600 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-blue-800 mb-1">Pago Protegido</h4>
+                  <p className="text-sm text-blue-700 leading-relaxed">
+                    Tu pago será retenido de forma segura y solo se le liberará al 
+                    profesional una vez que confirmes que el trabajo fue completado 
+                    satisfactoriamente.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Botón confirmar y pagar */}
+        {/* Botón confirmar */}
         <button
-          onClick={handleConfirmarYPagar}
+          onClick={handleConfirmarServicio}
           disabled={loading}
-          className="w-full bg-blue-600 text-white py-4 rounded-xl font-medium text-lg hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+          className="w-full bg-blue-600 text-white py-4 rounded-xl font-medium text-lg hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span>Confirmar y Pagar (Retenido)</span>
+          {loading ? 'Confirmando...' : 'Confirmar y Proceder al Pago'}
         </button>
+
+        {/* Información adicional */}
+        <div className="mt-6 text-center">
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Al confirmar, aceptas nuestros términos y condiciones. 
+            El precio final puede variar según la complejidad del trabajo.
+          </p>
+        </div>
       </div>
     </div>
   );

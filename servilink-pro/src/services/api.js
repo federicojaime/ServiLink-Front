@@ -1,7 +1,8 @@
+// src/services/api.js - Con URLs actualizadas para /servi-link
 import axios from 'axios';
 
 // Configuración base de la API
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://codeo.site/api-servilink';
 
 // Crear instancia de axios
 const api = axios.create({
@@ -9,80 +10,147 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000,
 });
+
+// Variable para evitar bucles infinitos en el refresh
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  
+  failedQueue = [];
+};
 
 // Interceptor para agregar token JWT automáticamente
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Interceptor para manejar respuestas y errores
-api.interceptors.response.use(
-  (response) => response.data,
-  async (error) => {
-    if (error.response?.status === 401) {
-      // Token expirado, intentar refresh
-      try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
-            refresh_token: refreshToken
-          });
-          
-          const { access_token } = response.data.data.tokens;
-          localStorage.setItem('access_token', access_token);
-          
-          // Reintentar la petición original
-          error.config.headers.Authorization = `Bearer ${access_token}`;
-          return api.request(error.config);
-        }
-      } catch (refreshError) {
-        // Refresh falló, redirigir a login
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
+// Interceptor para manejar respuestas y errores
+api.interceptors.response.use(
+  (response) => {
+    console.log(`API Response: ${response.status} - Success`);
+    return response.data;
+  },
+  async (error) => {
+    const originalRequest = error.config;
+    
+    console.error('API Error:', error.response?.status, error.response?.data);
+    
+    // Si es error 401 y no es el endpoint de login/refresh y no hemos intentado refresh ya
+    if (error.response?.status === 401 && 
+        !originalRequest.url.includes('/auth/login') && 
+        !originalRequest.url.includes('/auth/refresh') &&
+        !originalRequest._retry) {
+      
+      if (isRefreshing) {
+        // Si ya estamos refrescando, poner en cola
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        }).then(token => {
+          originalRequest.headers.Authorization = `Bearer ${token}`;
+          return api(originalRequest);
+        }).catch(err => {
+          return Promise.reject(err);
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      const refreshToken = localStorage.getItem('refresh_token');
+      
+      if (!refreshToken) {
+        // No hay refresh token, limpiar y redirigir
+        clearAuthData();
+        processQueue(error, null);
+        isRefreshing = false;
+        return Promise.reject(error);
+      }
+
+      try {
+        // Usar una instancia nueva de axios para evitar interceptores
+        const refreshResponse = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, {
+          refresh_token: refreshToken
+        });
+        
+        if (refreshResponse.data.success) {
+          const { access_token } = refreshResponse.data.data.tokens;
+          localStorage.setItem('access_token', access_token);
+          
+          // Procesar cola de peticiones
+          processQueue(null, access_token);
+          
+          // Reintentar petición original
+          originalRequest.headers.Authorization = `Bearer ${access_token}`;
+          return api(originalRequest);
+        } else {
+          throw new Error('Refresh failed');
+        }
+      } catch (refreshError) {
+        console.error('Refresh token failed:', refreshError);
+        processQueue(refreshError, null);
+        clearAuthData();
+        return Promise.reject(error);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
+const clearAuthData = () => {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('user');
+  // Redirigir considerando el base path
+  const currentPath = window.location.pathname;
+  const basePath = '/servi-link';
+  
+  // Solo redirigir si estamos en una ruta protegida
+  if (!currentPath.startsWith(basePath) || 
+      currentPath === basePath || 
+      currentPath === basePath + '/' ||
+      currentPath.includes('/auth') || 
+      currentPath.includes('/register')) {
+    return; // No redirigir
+  }
+  
+  window.location.href = basePath;
+};
+
+// Resto de los servicios permanecen igual...
 // Servicios de autenticación
 export const authService = {
   login: async (email, password) => {
-    try {
-      console.log('Enviando request de login a:', `${API_BASE_URL}/api/v1/auth/login`);
-      console.log('Con datos:', { email, password });
-      
-      const response = await api.post('/auth/login', { email, password });
-      console.log('Respuesta de login:', response);
-      return response;
-    } catch (error) {
-      console.error('Error en authService.login:', error);
-      console.error('Error response:', error.response);
-      throw error;
-    }
+    const response = await api.post('/auth/login', { email, password });
+    return response;
   },
   
   register: async (userData) => {
-    try {
-      console.log('Enviando request de registro a:', `${API_BASE_URL}/api/v1/auth/register`);
-      console.log('Con datos:', userData);
-      
-      const response = await api.post('/auth/register', userData);
-      console.log('Respuesta de registro:', response);
-      return response;
-    } catch (error) {
-      console.error('Error en authService.register:', error);
-      console.error('Error response:', error.response);
-      throw error;
-    }
+    const response = await api.post('/auth/register', userData);
+    return response;
   },
   
   getProfile: async () => {
@@ -91,8 +159,11 @@ export const authService = {
   },
   
   refreshToken: async (refreshToken) => {
-    const response = await api.post('/auth/refresh', { refresh_token: refreshToken });
-    return response;
+    // Usar axios directo para evitar interceptores
+    const response = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh`, { 
+      refresh_token: refreshToken 
+    });
+    return response.data;
   }
 };
 
@@ -292,6 +363,24 @@ export const notificationService = {
   
   sendManualNotification: async (notificationData) => {
     const response = await api.post('/notificaciones/enviar', notificationData);
+    return response;
+  }
+};
+
+// Servicios de administración
+export const adminService = {
+  getDashboardStats: async () => {
+    const response = await api.get('/admin/dashboard');
+    return response;
+  },
+  
+  getStatsByPeriod: async (periodo = 'mes') => {
+    const response = await api.get('/admin/estadisticas', { params: { periodo } });
+    return response;
+  },
+  
+  manageUsers: async (params = {}) => {
+    const response = await api.get('/admin/usuarios', { params });
     return response;
   }
 };
