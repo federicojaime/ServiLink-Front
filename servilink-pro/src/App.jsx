@@ -1,4 +1,4 @@
-// src/App.jsx - Con basename para /servi-link
+// src/App.jsx - Con todas las nuevas rutas
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -20,14 +20,21 @@ import ScheduleTime from './pages/client/ScheduleTime';
 import ConfirmService from './pages/client/ConfirmService';
 import RateService from './pages/client/RateService';
 import PaymentScreen from './pages/client/PaymentScreen';
+import TrackingScreen from './pages/client/TrackingScreen';
 
 // Contractor Pages
 import ContractorDashboard from './pages/contractor/ContractorDashboard';
 import ContractorCalendar from './pages/contractor/ContractorCalendar';
 import ContractorAvailability from './pages/contractor/ContractorAvailability';
+import ServiceTracking from './pages/contractor/ServiceTracking';
 
 // Shared Pages
 import NotificationsScreen from './pages/shared/NotificationsScreen';
+import UserProfile from './pages/shared/UserProfile';
+
+// Onboarding Pages (Nuevas)
+import ClientOnboarding from './pages/onboarding/ClientOnboarding';
+import ContractorOnboarding from './pages/onboarding/ContractorOnboarding';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, userType }) => {
@@ -66,6 +73,15 @@ const PublicRoute = ({ children }) => {
   }
 
   if (isAuthenticated && user) {
+    // Verificar si necesita completar onboarding
+    if (user.onboarding_completado === false) {
+      if (user.tipo_usuario === 'cliente') {
+        return <Navigate to="/client/onboarding" replace />;
+      } else if (user.tipo_usuario === 'contratista') {
+        return <Navigate to="/contractor/onboarding" replace />;
+      }
+    }
+    
     // Redirigir según tipo de usuario
     if (user.tipo_usuario === 'cliente') {
       return <Navigate to="/client/dashboard" replace />;
@@ -123,6 +139,25 @@ function AppRoutes() {
           <PublicRoute>
             <ContractorRegister />
           </PublicRoute>
+        } 
+      />
+
+      {/* Rutas de onboarding */}
+      <Route 
+        path="/client/onboarding" 
+        element={
+          <ProtectedRoute userType="cliente">
+            <ClientOnboarding />
+          </ProtectedRoute>
+        } 
+      />
+
+      <Route 
+        path="/contractor/onboarding" 
+        element={
+          <ProtectedRoute userType="contratista">
+            <ContractorOnboarding />
+          </ProtectedRoute>
         } 
       />
 
@@ -208,6 +243,24 @@ function AppRoutes() {
         } 
       />
 
+      <Route 
+        path="/client/tracking" 
+        element={
+          <ProtectedRoute userType="cliente">
+            <TrackingScreen />
+          </ProtectedRoute>
+        } 
+      />
+
+      <Route 
+        path="/client/profile" 
+        element={
+          <ProtectedRoute userType="cliente">
+            <UserProfile />
+          </ProtectedRoute>
+        } 
+      />
+
       {/* Rutas protegidas para contratistas */}
       <Route 
         path="/contractor/dashboard" 
@@ -232,6 +285,24 @@ function AppRoutes() {
         element={
           <ProtectedRoute userType="contratista">
             <ContractorAvailability />
+          </ProtectedRoute>
+        } 
+      />
+
+      <Route 
+        path="/contractor/tracking" 
+        element={
+          <ProtectedRoute userType="contratista">
+            <ServiceTracking />
+          </ProtectedRoute>
+        } 
+      />
+
+      <Route 
+        path="/contractor/profile" 
+        element={
+          <ProtectedRoute userType="contratista">
+            <UserProfile />
           </ProtectedRoute>
         } 
       />
